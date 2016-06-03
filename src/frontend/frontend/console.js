@@ -46,6 +46,26 @@ angular.module('frontend-app')
     };
     var asan_contents = [];
 
+    // err is a json object (parsed & filtered in backend, only printed here)
+    // TODO: better logic (self.write or something?)
+    function print_asan_error(err) {
+      // json object should have:
+      // type (string)
+      // call stack (array)
+      // raw message
+      // return code
+      var to_print = [];
+      // Original error message (type):
+      to_print.push(err.raw_message + " (" + type + "):");
+      var stack_size = err.call_stack
+      for (var index = 0; index < stack_size; index++){
+        // frame n, file.c, function, line:
+        var cur = err.stack[index];
+        //to_print.push('\tFrame: ' + [cur.frame, cur.file, cur.fn].join(": ") + "line " + cur.line);
+        self._write('\tFrame: ' + [cur.frame, cur.file, cur.fn].join(": ") + "line " + cur.line);
+      }
+    }
+
     // contents is an array of lines of address sanitizer output
     function parse_asan_output(contents) {
       console.warn("ASAN output:", contents);
