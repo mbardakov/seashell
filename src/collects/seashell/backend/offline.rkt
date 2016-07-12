@@ -50,7 +50,8 @@
 ;; External datatypes (to send back to the frontend)
 (json-struct off:file ([project : String] [file : String] [checksum : (Option String)]) #:transparent)
 (json-struct off:change ([type : String] [file : off:file]
-                         [contents : (Option String)] [checksum : (Option String)])
+                         [contents : (Option String)] [checksum : (Option String)]
+                         [history : (Option Bytes)])
              #:transparent)
 (json-struct off:changes ([projects : (Listof String)]
                           [files : (Listof off:file)]
@@ -123,7 +124,8 @@
           [(off:change "deleteFile"
                        (off:file project file checksum)
                        #f
-                       checksum)
+                       checksum
+                       history)
            (assert (path-string? file))
            (cond
              ;; Missing project: ignore (delete on local, as cannot create project offline)
@@ -141,7 +143,8 @@
           [(off:change "editFile"
                        (off:file project file _)
                        contents
-                       checksum)
+                       checksum
+                       history)
            (assert (path-string? file))
            [cond
              ;; Missing project: ignore (delete on local, as cannot create project offline)
@@ -159,9 +162,9 @@
                         (cons (conflict "editFile" project file contents 'checksum) conflicts))])
                    (cond
                      [checksum
-                       (write-file project file (string->bytes/utf-8 contents) #f checksum)]
+                       (write-file project file (string->bytes/utf-8 contents) #f checksum history)]
                      [else
-                       (new-file project file (string->bytes/utf-8 contents) 'raw #f)])
+                       (new-file project file (string->bytes/utf-8 contents) 'raw #f #"")])
                    conflicts))
                (if (path? base)
                  ;; Attempt to create base path -- if it fails, record the conflict.
@@ -219,7 +222,7 @@
               (define file-to-write (path-replace-suffix (calculate-conflict-location base) newext))
               (when contents
                 ;; This call to new-file should not fail.
-                (new-file project file-to-write (string->bytes/utf-8 contents) 'raw #f))
+                (new-file project file-to-write (string->bytes/utf-8 contents) 'raw #f #"")) ; no undo history when resolving conflicts?
               (off:conflict type (off:file project file #f) (reason->string reason) #t)]
             [else (raise (exn:project:sync "Path did not refer to file!" (current-continuation-marks)))])]
         [else
@@ -290,7 +293,7 @@
   (define backend-new-files (list->set (remove* their-files/w-c our-files/w-c)))
   (define backend-deleted-files (remove* our-files/w-c their-files/w-c))
   (define our-delete-change
-    (map (lambda ([f : off:file]) : off:change (off:change "deleteFile" f #f #f))
+    (map (lambda ([f : off:file]) : off:change (off:change "deleteFile" f #f #f #f))
          backend-deleted-files))
   ;; Collect list of new/edited files (in the backend).
   ;; NOTE: The checksum matters for this calculation.
@@ -313,7 +316,8 @@
                              (off:change "editFile" f #f
                                          (if is-new-file? #f checksum)))])
                (off:change "editFile" f (bytes->string/utf-8 contents)
-                           (if is-new-file? #f checksum))))
+                           (if is-new-file? #f checksum)
+                           history)))
            backend-changed-files)))
   ;; Generate changes to send back.
   (off:response->json (off:response
